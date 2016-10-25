@@ -20,13 +20,14 @@ import (
 	"time"
 )
 
-// interface
+//Archivex - main interface
 type Archivex interface {
 	Create(name string) error
 	Add(name string, file []byte) error
 	AddFile(name string) error
 	AddAll(dir string, includeCurrentFolder bool) error
 	Close() error
+	AddIgnores(ignores []string)
 }
 
 // ArchiveWriteFunc is the closure used by an archive's AddAll method to actually put a file into an archive
@@ -37,6 +38,7 @@ type ArchiveWriteFunc func(info os.FileInfo, file io.Reader, entryName string) (
 type ZipFile struct {
 	Writer *zip.Writer
 	Name   string
+	Ignore []string
 }
 
 // TarFile implement *tar.Writer
@@ -45,6 +47,12 @@ type TarFile struct {
 	Name       string
 	GzWriter   *gzip.Writer
 	Compressed bool
+	Ignore     []string
+}
+
+//AddIgnores add the ignores to zip files
+func (z *ZipFile) AddIgnores(ignores []string) {
+	z.Ignore = ignores
 }
 
 // Create new file zip
@@ -68,6 +76,13 @@ func (z *ZipFile) Create(name string) error {
 
 // Add add byte in archive zip
 func (z *ZipFile) Add(name string, file []byte) error {
+	if len(z.Ignore) != 0 {
+		for i := range z.Ignore {
+			if z.Ignore[i] == name {
+				return nil
+			}
+		}
+	}
 	iow, err := z.Writer.Create(name)
 	if err != nil {
 		return err
@@ -80,6 +95,13 @@ func (z *ZipFile) Add(name string, file []byte) error {
 
 // AddFile add file from dir in archive
 func (z *ZipFile) AddFile(name string) error {
+	if len(z.Ignore) != 0 {
+		for i := range z.Ignore {
+			if z.Ignore[i] == name {
+				return nil
+			}
+		}
+	}
 	zippedFile, err := z.Writer.Create(name)
 	if err != nil {
 		return err
@@ -119,7 +141,7 @@ func (z *ZipFile) AddFile(name string) error {
 // Directories receive a zero-size entry in the archive, with a trailing slash in the header name, and no compression
 func (z *ZipFile) AddAll(dir string, includeCurrentFolder bool) error {
 	dir = path.Clean(dir)
-	return addAll(dir, dir, includeCurrentFolder, func(info os.FileInfo, file io.Reader, entryName string) (err error) {
+	return addAll(dir, dir, includeCurrentFolder, z.Ignore, func(info os.FileInfo, file io.Reader, entryName string) (err error) {
 
 		// Create a header based off of the fileinfo
 		header, err := zip.FileInfoHeader(info)
@@ -160,6 +182,11 @@ func (z *ZipFile) AddAll(dir string, includeCurrentFolder bool) error {
 func (z *ZipFile) Close() error {
 	err := z.Writer.Close()
 	return err
+}
+
+//AddIgnores add the ignores to zip files
+func (t *TarFile) AddIgnores(ignores []string) {
+	t.Ignore = ignores
 }
 
 // Create new Tar file
@@ -204,7 +231,13 @@ func (t *TarFile) Create(name string) error {
 
 // Add add byte in archive tar
 func (t *TarFile) Add(name string, file []byte) error {
-
+	if len(t.Ignore) != 0 {
+		for i := range t.Ignore {
+			if t.Ignore[i] == name {
+				return nil
+			}
+		}
+	}
 	hdr := &tar.Header{
 		Name:    name,
 		Size:    int64(len(file)),
@@ -220,7 +253,13 @@ func (t *TarFile) Add(name string, file []byte) error {
 
 // Add add byte in archive tar
 func (t *TarFile) AddWithHeader(name string, file []byte, hdr *tar.Header) error {
-
+	if len(t.Ignore) != 0 {
+		for i := range t.Ignore {
+			if t.Ignore[i] == name {
+				return nil
+			}
+		}
+	}
 	if err := t.Writer.WriteHeader(hdr); err != nil {
 		return err
 	}
@@ -230,6 +269,13 @@ func (t *TarFile) AddWithHeader(name string, file []byte, hdr *tar.Header) error
 
 // AddFile add file from dir in archive tar
 func (t *TarFile) AddFile(name string) error {
+	if len(t.Ignore) != 0 {
+		for i := range t.Ignore {
+			if t.Ignore[i] == name {
+				return nil
+			}
+		}
+	}
 	bytearq, err := ioutil.ReadFile(name)
 	if err != nil {
 		return err
@@ -258,6 +304,13 @@ func (t *TarFile) AddFile(name string) error {
 
 // AddFile add file from dir in archive tar
 func (t *TarFile) AddFileWithName(name string, filename string) error {
+	if len(t.Ignore) != 0 {
+		for i := range t.Ignore {
+			if t.Ignore[i] == name {
+				return nil
+			}
+		}
+	}
 	bytearq, err := ioutil.ReadFile(name)
 	if err != nil {
 		return err
@@ -289,8 +342,7 @@ func (t *TarFile) AddFileWithName(name string, filename string) error {
 // Tar does not support directories
 func (t *TarFile) AddAll(dir string, includeCurrentFolder bool) error {
 	dir = path.Clean(dir)
-	return addAll(dir, dir, includeCurrentFolder, func(info os.FileInfo, file io.Reader, entryName string) (err error) {
-
+	return addAll(dir, dir, includeCurrentFolder, t.Ignore, func(info os.FileInfo, file io.Reader, entryName string) (err error) {
 		// Skip directory entries
 		if file == nil {
 			return nil
@@ -354,7 +406,7 @@ func getSubDir(dir string, rootDir string, includeCurrentFolder bool) (subDir st
 }
 
 // addAll is used to recursively go down through directories and add each file and directory to an archive, based on an ArchiveWriteFunc given to it
-func addAll(dir string, rootDir string, includeCurrentFolder bool, writerFunc ArchiveWriteFunc) error {
+func addAll(dir string, rootDir string, includeCurrentFolder bool, ignores []string, writerFunc ArchiveWriteFunc) error {
 
 	// Get a list of all entries in the directory, as []os.FileInfo
 	fileInfos, err := ioutil.ReadDir(dir)
@@ -381,11 +433,25 @@ func addAll(dir string, rootDir string, includeCurrentFolder bool, writerFunc Ar
 		// Write the entry into the archive
 		subDir := getSubDir(dir, rootDir, includeCurrentFolder)
 		entryName := path.Join(subDir, info.Name())
-		if err := writerFunc(info, reader, entryName); err != nil {
-			if file != nil {
-				file.Close()
+		//Check if we have an ignore list
+		if len(ignores) > 0 {
+			for k := range ignores {
+				if ignores[k] != info.Name() {
+					if err := writerFunc(info, reader, entryName); err != nil {
+						if file != nil {
+							file.Close()
+						}
+						return err
+					}
+				}
 			}
-			return err
+		} else {
+			if err := writerFunc(info, reader, entryName); err != nil {
+				if file != nil {
+					file.Close()
+				}
+				return err
+			}
 		}
 
 		if file != nil {
@@ -397,7 +463,7 @@ func addAll(dir string, rootDir string, includeCurrentFolder bool, writerFunc Ar
 
 		// If the entry is a directory, recurse into it
 		if info.IsDir() {
-			addAll(full, rootDir, includeCurrentFolder, writerFunc)
+			addAll(full, rootDir, includeCurrentFolder, ignores, writerFunc)
 		}
 	}
 

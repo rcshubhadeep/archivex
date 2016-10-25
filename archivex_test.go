@@ -15,12 +15,13 @@ import (
 )
 
 type archTest struct {
-	addPath     string
-	include     bool
-	name        string
-	filePath    string
-	addString   string
-	addFileName string
+	addPath      string
+	include      bool
+	name         string
+	filePath     string
+	addString    string
+	addFileName  string
+	ignoredFiles []string
 }
 
 type archTypeTest struct {
@@ -43,18 +44,22 @@ func Test_archivex(t *testing.T) {
 	// All the different tests we want to run with different combinations of input paths and the includeCurrentFolder flag
 	tests := []archTest{
 		// absolute path
-		archTest{dir + "/testfolder/", true, "absTrailInclude", dir + "/LICENSE", "string", "filename"},
-		archTest{dir + "/testfolder/", false, "absTrailExclude", dir + "/LICENSE", "string", "filename"},
+		archTest{dir + "/testfolder/", true, "absTrailInclude", dir + "/LICENSE", "string", "filename", []string{}},
+		archTest{dir + "/testfolder/", false, "absTrailExclude", dir + "/LICENSE", "string", "filename", []string{}},
 
 		// relative path
-		archTest{"testfolder/", true, "relTrailInclude", "LICENSE", "string", "filename"},
-		archTest{"testfolder/", false, "relTrailExclude", "LICENSE", "string", "filename"},
+		archTest{"testfolder/", true, "relTrailInclude", "LICENSE", "string", "filename", []string{}},
+		archTest{"testfolder/", false, "relTrailExclude", "LICENSE", "string", "filename", []string{}},
 
 		// without trailing slashes
-		archTest{dir + "/testfolder", true, "absInclude", dir + "/LICENSE", "string", "filename"},
-		archTest{dir + "/testfolder", false, "absExclude", dir + "/LICENSE", "string", "filename"},
-		archTest{"testfolder", true, "relInclude", "LICENSE", "string", "filename"},
-		archTest{"testfolder", false, "relExclude", "LICENSE", "string", "filename"},
+		archTest{dir + "/testfolder", true, "absInclude", dir + "/LICENSE", "string", "filename", []string{}},
+		archTest{dir + "/testfolder", false, "absExclude", dir + "/LICENSE", "string", "filename", []string{}},
+		archTest{"testfolder", true, "relInclude", "LICENSE", "string", "filename", []string{}},
+		archTest{"testfolder", false, "relExclude", "LICENSE", "string", "filename", []string{}},
+
+		//Ignoring some files
+		archTest{dir + "/testfolder", true, "ingoreInclude", dir + "/LICENSE", "string", "filename", []string{"test1.txt"}},
+		archTest{dir + "/testfolder", false, "ingoreExclude", dir + "/LICENSE", "string", "filename", []string{"test1.txt"}},
 	}
 
 	// We want to execute the batch of tests on both Zip and Tar
@@ -74,6 +79,7 @@ func Test_archivex(t *testing.T) {
 			// Create the archive
 			filename := fmt.Sprintf("%d_%s_test", i+1, test.name)
 			arch := reflect.ValueOf(typeTest.arch).Interface().(Archivex)
+			arch.AddIgnores(test.ignoredFiles)
 			if err := arch.Create(path.Join("testresults", filename)); err != nil {
 				t.Fatalf("Error creating '%s': %v", filename, err)
 			}
