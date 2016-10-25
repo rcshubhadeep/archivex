@@ -11,6 +11,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -435,14 +436,23 @@ func addAll(dir string, rootDir string, includeCurrentFolder bool, ignores []str
 		entryName := path.Join(subDir, info.Name())
 		//Check if we have an ignore list
 		if len(ignores) > 0 {
+			foundInIgnore := false
 			for k := range ignores {
-				if ignores[k] != info.Name() {
-					if err := writerFunc(info, reader, entryName); err != nil {
-						if file != nil {
-							file.Close()
-						}
-						return err
+				if ignores[k] == info.Name() {
+					foundInIgnore = true
+					break
+				}
+			}
+			if foundInIgnore == false {
+				fmt.Printf("%s", info.Name())
+				if info.IsDir() {
+					addAll(full, rootDir, includeCurrentFolder, ignores, writerFunc)
+				}
+				if err := writerFunc(info, reader, entryName); err != nil {
+					if file != nil {
+						file.Close()
 					}
+					return err
 				}
 			}
 		} else {
@@ -462,9 +472,7 @@ func addAll(dir string, rootDir string, includeCurrentFolder bool, ignores []str
 		}
 
 		// If the entry is a directory, recurse into it
-		if info.IsDir() {
-			addAll(full, rootDir, includeCurrentFolder, ignores, writerFunc)
-		}
+
 	}
 
 	return nil
