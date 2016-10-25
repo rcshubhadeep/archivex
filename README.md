@@ -12,7 +12,7 @@ Installation
 -------------
 
 ``` bash
-$ go get github.com/jhoonb/archivex
+$ go get github.com/rcshubhadeep/archivex
 ``` 
 
 
